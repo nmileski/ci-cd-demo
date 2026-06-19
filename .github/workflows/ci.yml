@@ -32,5 +32,8 @@ jobs:
       - name: Set storage/cache permissions
         run: chmod -R 777 storage bootstrap/cache
 
+      - name: Check code style (Laravel Pint)
+        run: ./vendor/bin/pint --test
+
       - name: Run the test suite
         run: php artisan test
