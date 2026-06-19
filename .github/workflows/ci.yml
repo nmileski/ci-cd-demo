@@ -1,11 +1,9 @@
 name: Laravel CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 jobs:
   test:
     name: Run Tests
@@ -17,7 +15,6 @@ jobs:
       DB_DATABASE: laravel_test
       DB_USERNAME: root
       DB_PASSWORD: root
-
     services:
       mysql:
         image: mysql:8.0
@@ -31,34 +28,42 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
           extensions: mbstring, pdo_mysql, bcmath
-
       - name: Copy .env file
         run: cp .env.example .env
-
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
       - name: Generate app key
         run: php artisan key:generate
-
       - name: Set storage/cache permissions
         run: chmod -R 777 storage bootstrap/cache
-
       - name: Run database migrations
         run: php artisan migrate --force
-
       - name: Check code style (Laravel Pint)
         run: ./vendor/bin/pint --test
-
       - name: Run the test suite
         run: php artisan test
+
+  deploy:
+    name: Deploy to Production
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Simulate deployment
+        run: |
+          echo "Deploying to production..."
+          echo "Pulling latest code"
+          echo "Installing production dependencies"
+          echo "Running database migrations"
+          echo "Clearing and rebuilding caches"
+          echo "Deployment complete!"
