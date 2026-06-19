@@ -46,6 +46,19 @@ jobs:
         run: chmod -R 777 storage bootstrap/cache
       - name: Run database migrations
         run: php artisan migrate --force
+      - name: Forbid debug statements (dd, dump, var_dump)
+        run: |
+          if grep -rn --include='*.php' -E '\b(dd|dump|var_dump|print_r)\(' app/ routes/ database/ tests/; then
+            echo "::error::Debug statement(s) found above. Remove dd()/dump()/var_dump()/print_r() before committing."
+            exit 1
+          fi
+
+      - name: Forbid console.log statements
+        run: |
+          if grep -rn --include='*.js' --include='*.jsx' --include='*.ts' --include='*.tsx' -E 'console\.(log|debug)\(' resources/js/; then
+            echo "::error::console.log/debug found above. Remove before committing."
+            exit 1
+          fi
       - name: Check code style (Laravel Pint)
         run: ./vendor/bin/pint --test
       - name: Run the test suite
