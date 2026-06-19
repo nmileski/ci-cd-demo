@@ -7,5 +7,6 @@ Route::get('/', function () {
 });
 
 Route::get('/hello', function () {
+    dd(3453);
     return 'Hello, CI/CD!';
 });
