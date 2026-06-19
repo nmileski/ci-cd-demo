@@ -7,5 +7,5 @@ Route::get('/', function () {
 });
 
 Route::get('/hello', function () {
-    return 'Hello, CI/CD!';
+    return 'Broken on purpose';
 });
