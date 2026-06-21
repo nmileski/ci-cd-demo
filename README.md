@@ -1,58 +1,86 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# ci-cd-demo
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel application built specifically to learn and demonstrate a real, working CI/CD pipeline using GitHub Actions — including testing, static analysis, security scanning, code style enforcement, Docker builds, and gated deployment.
 
-## About Laravel
+## What this pipeline does
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Every push to `main` (and every pull request) triggers a pipeline with the following stages:
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+### 1. Testing — matrix across PHP 8.3 and 8.4
+The test suite runs twice in parallel, once per PHP version, against a real MySQL 8.0 service container (not SQLite) — catching version- and database-specific bugs that wouldn't otherwise surface until production.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### 2. Security audit
+`composer audit` checks every dependency against known CVE advisories before anything else runs.
 
-## Learning Laravel
+### 3. Static analysis — Larastan / PHPStan (level 5)
+Catches real logic bugs by reading the code, without executing it — undefined methods, type mismatches, unreachable code.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+### 4. Custom rule enforcement
+A project-specific check (plain `grep`, no extra dependency) blocks any `dd()`, `dump()`, `var_dump()`, or `console.log()` calls from being merged — a common source of accidental debug leftovers reaching production.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### 5. Code style — Laravel Pint
+Enforces consistent formatting (spacing, blank lines, quote style) automatically.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+### 6. Coding standards — PHP_CodeSniffer (PSR-12)
+Enforces naming conventions (camelCase methods, etc.) and other PSR-12 rules that Pint doesn't cover, since renaming code safely isn't a pure formatting operation.
 
-## Agentic Development
+### 7. Code coverage
+Tests run with coverage measurement (PCOV) and the build fails if coverage drops below a 25% minimum threshold — a deliberately realistic baseline for an early-stage project, intended to be raised over time as the test suite grows.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### 8. Docker image build
+A separate job builds the application into a Docker image and verifies it actually boots (`php-fpm` reaches "ready to handle connections"), not just that it compiles.
 
-```bash
-composer require laravel/boost --dev
+### 9. Deployment (simulated)
+A final job only runs if every job above succeeds (`needs: test`), and only on a direct push to `main` — never on pull requests. This is the actual mechanism that prevents broken or unreviewed code from reaching production.
 
-php artisan boost:install
+## Pipeline architecture
+
+```
+push to main / PR opened
+        │
+        ▼
+┌───────────────────┐
+│   test (matrix)    │  PHP 8.3  ──┐
+│                     │  PHP 8.4  ──┤  (parallel)
+└───────────────────┘             │
+        │ needs: test (all pass)   │
+        ├──────────────┬───────────┘
+        ▼              ▼
+┌─────────────┐  ┌──────────────┐
+│   docker     │  │   deploy      │  (only on push to main)
+│ build+verify │  │  (simulated)  │
+└─────────────┘  └──────────────┘
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+## Real issues debugged while building this
 
-## Contributing
+This project's commit history reflects genuine debugging, not just following a tutorial:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+- **GitHub OAuth scope error** — initial push was rejected because the `gh` CLI token lacked the `workflow` scope required to create/update files under `.github/workflows/`.
+- **HTTPS credential failure** — git fell back to legacy username/password auth after the scope fix; resolved with `gh auth setup-git` to wire `gh` in as git's credential helper.
+- **YAML indentation bug** — the `deploy` job was initially nested one level too deep, silently becoming a property of the `test` job instead of a sibling job, due to a 2-space indentation error.
+- **`phpunit.xml` override gotcha** — Laravel's default test config force-overrides the database connection to in-memory SQLite regardless of `.env`, unless real environment variables are set at the GitHub Actions job level (`env:` block) before PHPUnit boots.
+- **PHP version/dependency mismatch** — a PHP 8.2 entry in the test matrix failed outright because Laravel 13 requires PHP ^8.3; matrix testing caught a real incompatibility, not a code bug.
+- **Conflicting linters** — `phpcbf` (PHP_CodeSniffer's auto-fixer) and Pint disagreed on blank-line spacing after a trait import fix, requiring a manual resolution between two tools with different opinions.
+- **Stale Docker build cache** — the Docker image failed to boot because `bootstrap/cache/packages.php`, generated locally with dev dependencies, was copied into the image and referenced a class (`Laravel\Pail\PailServiceProvider`) that didn't exist in the `--no-dev` production install.
+- **Untracked files** — `phpcs` failed in CI ("No such file or directory") because `composer.lock`, `phpcs.xml`, `Dockerfile`, and `.dockerignore` had only ever been created locally and were never actually committed to git — a reminder that local success and CI access are not the same fact.
 
-## Code of Conduct
+## Local development
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan serve
+```
 
-## Security Vulnerabilities
+## Running checks locally
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```bash
+./vendor/bin/phpstan analyse --memory-limit=1G   # static analysis
+./vendor/bin/pint --test                          # code style (check only)
+./vendor/bin/phpcs                                # naming/standards
+php artisan test --coverage --min=25              # tests + coverage
+composer audit                                    # security
+```
