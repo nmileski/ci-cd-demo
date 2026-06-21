@@ -10,4 +10,9 @@ class Post extends Model
     use HasFactory;
 
     protected $fillable = ['title'];
+
+    public function getTitle()
+    {
+        return $this->title;
+    }
 }
