@@ -34,61 +34,69 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
           extensions: mbstring, pdo_mysql, bcmath
           coverage: pcov
-
       - name: Cache Composer dependencies
         uses: actions/cache@v5
         with:
           path: vendor
           key: composer-${{ matrix.php }}-${{ hashFiles('composer.lock') }}
           restore-keys: composer-${{ matrix.php }}-
-
       - name: Copy .env file
         run: cp .env.example .env
-
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
       - name: Security audit (composer audit)
         run: composer audit
-
       - name: Static analysis (Larastan/PHPStan)
         run: ./vendor/bin/phpstan analyse --memory-limit=1G
-
       - name: Generate app key
         run: php artisan key:generate
-
       - name: Set storage/cache permissions
         run: chmod -R 777 storage bootstrap/cache
-
       - name: Run database migrations
         run: php artisan migrate --force
-
       - name: Forbid debug statements (dd, dump, var_dump)
         run: |
           if grep -rn --include='*.php' -E '\b(dd|dump|var_dump|print_r)\(' app/ routes/ database/ tests/; then
             echo "::error::Debug statement(s) found above. Remove dd()/dump()/var_dump()/print_r() before committing."
             exit 1
           fi
-
       - name: Forbid console.log statements
         run: |
           if grep -rn --include='*.js' --include='*.jsx' --include='*.ts' --include='*.tsx' -E 'console\.(log|debug)\(' resources/js/; then
             echo "::error::console.log/debug found above. Remove before committing."
             exit 1
           fi
-
       - name: Check code style (Laravel Pint)
         run: ./vendor/bin/pint --test
-
+      - name: Check naming conventions (PHP_CodeSniffer)
+        run: ./vendor/bin/phpcs
       - name: Run the test suite with coverage
         run: php artisan test --coverage --min=25
+
+  docker:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Build Docker image
+        run: docker build -t ci-cd-demo:${{ github.sha }} .
+
+      - name: Verify the image boots
+        run: |
+          docker run --rm -d --name verify-boot ci-cd-demo:${{ github.sha }}
+          sleep 3
+          docker ps --filter name=verify-boot --filter status=running -q | grep -q . && echo "Container is running"
+          docker logs verify-boot
+          docker stop verify-boot
 
   deploy:
     name: Deploy to Production
