@@ -54,6 +54,9 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Security audit (composer audit)
+        run: composer audit
+
       - name: Static analysis (Larastan/PHPStan)
         run: ./vendor/bin/phpstan analyse --memory-limit=1G
 
