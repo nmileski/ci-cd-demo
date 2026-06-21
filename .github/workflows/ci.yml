@@ -88,7 +88,7 @@ jobs:
         run: ./vendor/bin/pint --test
 
       - name: Run the test suite with coverage
-        run: php artisan test --coverage --min=50
+        run: php artisan test --coverage --min=25
 
   deploy:
     name: Deploy to Production

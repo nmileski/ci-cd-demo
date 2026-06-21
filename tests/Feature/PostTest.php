@@ -18,4 +18,11 @@ class PostTest extends TestCase
             'title' => 'My first post',
         ]);
     }
+
+    public function test_get_title_returns_the_title(): void
+    {
+        $post = Post::create(['title' => 'My first post']);
+
+        $this->assertEquals('My first post', $post->getTitle());
+    }
 }
