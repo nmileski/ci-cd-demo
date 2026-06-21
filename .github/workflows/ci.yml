@@ -40,6 +40,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           extensions: mbstring, pdo_mysql, bcmath
+          coverage: pcov
 
       - name: Cache Composer dependencies
         uses: actions/cache@v5
@@ -86,8 +87,8 @@ jobs:
       - name: Check code style (Laravel Pint)
         run: ./vendor/bin/pint --test
 
-      - name: Run the test suite
-        run: php artisan test
+      - name: Run the test suite with coverage
+        run: php artisan test --coverage --min=50
 
   deploy:
     name: Deploy to Production
